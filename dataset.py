@@ -25,7 +25,7 @@ from torch.utils.data import Dataset, DataLoader
 import imgproc
 
 __all__ = [
-    "TrainValidImageDataset", "TestImageDataset",
+    "TrainValidImageDataset","TrainValidImageDatasetHrLr", "TestImageDataset",
     "PrefetchGenerator", "PrefetchDataLoader", "CPUPrefetcher", "CUDAPrefetcher",
 ]
 
@@ -55,20 +55,25 @@ class TrainValidImageDataset(Dataset):
         self.mode = mode
 
     def __getitem__(self, batch_index: int) -> [dict[str, Tensor], dict[str, Tensor]]:
-        # Read a batch of image data
+        
+        # Read a batch of image data Div2k
         gt_image = cv2.imread(self.image_file_names[batch_index]).astype(np.float32) / 255.
-
+               
         # Image processing operations
         if self.mode == "Train":
+            # for data Div2k
             gt_image = imgproc.random_crop(gt_image, self.gt_image_size)
             gt_image = imgproc.random_rotate(gt_image, [90, 180, 270])
             gt_image = imgproc.random_horizontally_flip(gt_image, 0.5)
             gt_image = imgproc.random_vertically_flip(gt_image, 0.5)
+           
         elif self.mode == "Valid":
+            #for Data Div2k
             gt_image = imgproc.center_crop(gt_image, self.gt_image_size)
+           
         else:
             raise ValueError("Unsupported data processing model, please use `Train` or `Valid`.")
-
+        
         lr_image = imgproc.image_resize(gt_image, 1 / self.upscale_factor)
 
         # BGR convert RGB
@@ -84,6 +89,71 @@ class TrainValidImageDataset(Dataset):
 
     def __len__(self) -> int:
         return len(self.image_file_names)
+      
+        
+class TrainValidImageDatasetHrLr(Dataset):
+    """Define training/valid dataset loading methods.
+    "  use this class when we have low and hight resolution in the DataSet
+    Args:
+        image_dir (str): Train/Valid dataset address.
+        gt_image_size (int): Ground-truth resolution image size.
+        upscale_factor (int): Image up scale factor.
+        mode (str): Data set loading method, the training data set is for data enhancement, and the
+            verification dataset is not for data enhancement.
+    """
+
+    def __init__(
+            self,
+            image_dir: str,
+            gt_image_hr_size: int,
+            upscale_factor: int,
+            mode: str,
+    ) -> None:
+        super(TrainValidImageDatasetHrLr, self).__init__()
+        self.image_file_names = [os.path.join(image_dir, image_file_name) for image_file_name in os.listdir(image_dir)]
+        self.gt_image_hr_size = gt_image_hr_size
+        self.upscale_factor = upscale_factor
+        self.mode = mode
+
+    def __getitem__(self, batch_index: int) -> [dict[str, Tensor], dict[str, Tensor]]:
+        
+        # Read a batch of image data for own base
+        path_hr = self.image_file_names[batch_index]
+        path_lr = path_hr.replace('HR', 'LR')
+        gt_image_hr = cv2.imread(path_hr).astype(np.float32) / 255.
+        gt_image_lr = cv2.imread(path_lr).astype(np.float32) / 255.
+
+        
+        # Image processing operations
+        if self.mode == "Train":
+            
+            #uncomt for own data 
+            gt_image_hr, gt_image_lr = imgproc.random_rotate_v2(gt_image_hr, gt_image_lr, [90, 180, 270])
+            gt_image_hr, gt_image_lr = imgproc.random_horizontally_flip_v2(gt_image_hr, gt_image_lr, 0.5)
+            gt_image_hr, gt_image_lr = imgproc.random_vertically_flip_v2(gt_image_hr, gt_image_lr, 0.5)
+        
+        elif self.mode == "Valid":
+
+            pass
+        
+        else:
+            raise ValueError("Unsupported data processing model, please use `Train` or `Valid`.")
+        
+
+        # BGR convert RGB
+        gt_image_hr = cv2.cvtColor(gt_image_hr, cv2.COLOR_BGR2RGB)
+        gt_image_lr = cv2.cvtColor(gt_image_lr, cv2.COLOR_BGR2RGB)
+
+        # Convert image data into Tensor stream format (PyTorch).
+        # Note: The range of input and output is between [0, 1]
+        gt_image_hr = imgproc.image_to_tensor(gt_image_hr, False, False)
+        gt_image_lr = imgproc.image_to_tensor(gt_image_lr, False, False)
+
+        return {"gt": gt_image_hr, "lr": gt_image_lr}
+
+    def __len__(self) -> int:
+       print ('nombres images',len(self.image_file_names))
+       return len(self.image_file_names)
 
 
 class TestImageDataset(Dataset):

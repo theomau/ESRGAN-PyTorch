@@ -26,8 +26,10 @@ __all__ = [
     "image_resize", "preprocess_one_image",
     "expand_y", "rgb_to_ycbcr", "bgr_to_ycbcr", "ycbcr_to_bgr", "ycbcr_to_rgb",
     "rgb_to_ycbcr_torch", "bgr_to_ycbcr_torch",
-    "center_crop", "random_crop", "random_rotate", "random_vertically_flip", "random_horizontally_flip",
+    "center_crop", "random_crop", "random_rotate", "random_rotate_v2", "random_vertically_flip",
+    "random_vertically_flip_v2", "random_horizontally_flip", "random_horizontally_flip_v2",
 ]
+
 
 
 # Code reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/utils/matlab_functions.py`
@@ -179,7 +181,7 @@ def tensor_to_image(tensor: Tensor, range_norm: bool, half: bool) -> Any:
         tensor = tensor.half()
 
     image = tensor.squeeze(0).permute(1, 2, 0).mul(255).clamp(0, 255).cpu().numpy().astype("uint8")
-
+    
     return image
 
 
@@ -191,7 +193,7 @@ def preprocess_one_image(image_path: str, device: torch.device) -> Tensor:
 
     # Convert image data to pytorch format data
     tensor = image_to_tensor(image, False, False).unsqueeze_(0)
-
+   
     # Transfer tensor channel image format data to CUDA device
     tensor = tensor.to(device=device, memory_format=torch.channels_last, non_blocking=True)
 
@@ -536,6 +538,43 @@ def random_rotate(image,
 
     return rotated_image
 
+def random_rotate_v2(image_hr, image_lr,
+                  angles: list,
+                  center_hr: tuple[int, int] = None,
+                  center_lr: tuple[int, int] = None,
+                  scale_factor: float = 1.0) -> [np.ndarray, np.ndarray]:
+    """Rotate an image by a random angle
+
+    Args:
+        image (np.ndarray): Image read with OpenCV
+        angles (list): Rotation angle range
+        center (optional, tuple[int, int]): High resolution image selection center point. Default: ``None``
+        scale_factor (optional, float): scaling factor. Default: 1.0
+
+    Returns:
+        rotated_image (np.ndarray): image after rotation
+
+    """
+    image_hr_height, image_hr_width = image_hr.shape[:2]
+    image_lr_height, image_lr_width = image_lr.shape[:2]
+    
+    if center_hr is None:
+        center_hr = (image_hr_width // 2, image_hr_height // 2)
+    
+    if center_lr is None:
+        center_lr = (image_lr_width // 2, image_lr_height // 2)
+
+    # Random select specific angle
+    angle = random.choice(angles)
+    
+    matrix_hr = cv2.getRotationMatrix2D(center_hr, angle, scale_factor)
+    rotated_image_hr = cv2.warpAffine(image_hr, matrix_hr, (image_hr_width, image_hr_height))
+    
+    matrix_lr = cv2.getRotationMatrix2D(center_lr, angle, scale_factor)
+    rotated_image_lr = cv2.warpAffine(image_lr, matrix_lr, (image_lr_width, image_lr_height))
+
+    return rotated_image_hr, rotated_image_lr
+
 
 def random_horizontally_flip(image: np.ndarray, p: float = 0.5) -> np.ndarray:
     """Flip the image upside down randomly
@@ -555,6 +594,27 @@ def random_horizontally_flip(image: np.ndarray, p: float = 0.5) -> np.ndarray:
 
     return horizontally_flip_image
 
+def random_horizontally_flip_v2(image_hr: np.ndarray, image_lr: np.ndarray, p: float = 0.5) -> [np.ndarray, np.ndarray]:
+    """Same flip two image upside down randomly
+
+    Args:
+        image (np.ndarray): Image read with OpenCV
+        p (optional, float): Horizontally flip probability. Default: 0.5
+
+    Returns:
+        horizontally_flip_image (np.ndarray): image after horizontally flip
+
+    """
+    if random.random() < p:
+        horizontally_flip_image_hr = cv2.flip(image_hr, 1)
+        horizontally_flip_image_lr = cv2.flip(image_lr, 1)
+    else:
+        horizontally_flip_image_hr = image_hr
+        horizontally_flip_image_lr = image_lr
+
+    return horizontally_flip_image_hr, horizontally_flip_image_lr
+
+
 
 def random_vertically_flip(image: np.ndarray, p: float = 0.5) -> np.ndarray:
     """Flip an image horizontally randomly
@@ -573,3 +633,23 @@ def random_vertically_flip(image: np.ndarray, p: float = 0.5) -> np.ndarray:
         vertically_flip_image = image
 
     return vertically_flip_image
+
+def random_vertically_flip_v2(image_hr: np.ndarray, image_lr: np.ndarray, p: float = 0.5) -> [np.ndarray, np.ndarray]:
+    """Same flip two image horizontally randomly :
+
+    Args:
+        image (np.ndarray): Image read with OpenCV
+        p (optional, float): Vertically flip probability. Default: 0.5
+
+    Returns:
+        vertically_flip_image (np.ndarray): image after vertically flip
+
+    """
+    if random.random() < p:
+        vertically_flip_image_hr = cv2.flip(image_hr, 0)
+        vertically_flip_image_lr = cv2.flip(image_lr, 0)
+    else:
+        vertically_flip_image_hr = image_hr
+        vertically_flip_image_lr = image_lr
+
+    return vertically_flip_image_hr, vertically_flip_image_lr
