@@ -12,17 +12,6 @@ from image_quality_assessment import psnr, ssim
 from tqdm import tqdm
 
 
-import cvxpy as cp
-
-def total_variation(arr):
-    dx = cp.vec(arr[1:, :-1] - arr[:-1, :-1])
-    dy = cp.vec(arr[:-1, 1:] - arr[:-1, :-1])
-    D = cp.vstack((dx, dy))
-    norm = cp.norm(D, p=1, axis=0)
-    return cp.sum(norm)
-
-
-
 def main(arsgs) -> None:
     
     # initialisation of list
