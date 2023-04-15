@@ -1,10 +1,11 @@
 # Contribution :
-Pour adapter le code à nos problémes j'ai du apporter quelques contributions/modifications :
+Pour adapter le code à nos problèmes j'ai du apporter quelques contributions/modifications :
 - inference_iter_folders.py. Ce module permet de genérer à la suite les images de super résolution à partir des images basse résolution une fois que l'on a les poids du modéle.
 - PSNR_SSIM_calcul.py. Ce module permet de calculer les psnr et ssim des images super-résolues générées puis de les enrengister dans un fichier csv.
 - random_rotate_v2, random_horizontally_flip_v2, random_vertically_flip_v2 dans le module imgproc.py permettent d'appliquer la même "data augmentation" aux images de haute et basse résolution.
 - La classe TrainValidImageDatasetHrLr dans le module dataset.py. 
 
+Le reste des codes provient du git 'https://github.com/Lornatang/ESRGAN-PyTorch' qui est une implémentation du modèle ESRGAN
 
 # Ce qui suit est la présentation du git que j'ai cloné :
 # ESRGAN-PyTorch
