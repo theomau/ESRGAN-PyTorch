@@ -97,7 +97,7 @@ if __name__ == "__main__":
                         help="Path to folder in which to save super-resolution images.")
     parser.add_argument("--model_weights_path",
                         type=str,
-                        default="./results/train_ESRGAN_x2_div2k_Freeze_DG/g_last.pth.tar",
+                        default="./results/train_ESRGAN_x2_Diamond/g_last.pth.tar",
                         help="Model weights file path.")
     parser.add_argument("--device_type",
                         type=str,

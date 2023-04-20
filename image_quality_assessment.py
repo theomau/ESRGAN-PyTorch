@@ -33,6 +33,7 @@ from imgproc import image_resize, expand_y, bgr_to_ycbcr, rgb_to_ycbcr_torch
 __all__ = [
     "psnr", "ssim", "niqe",
     "PSNR", "SSIM", "NIQE",
+    "TV_norm1", "TV_norm2"
 ]
 
 _I = typing.Optional[int]
@@ -1365,3 +1366,40 @@ class NIQE(nn.Module):
                                    self.block_size_width)
 
         return niqe_metrics
+
+
+
+def TV(image) -> float:
+    """Calcul the total variation for greyscale image
+    Args: image (np.ndarray)
+    Returns: the value of total variation
+    
+    """
+    n, m = image.shape
+    som = 0
+    for i in range(n):
+        for j in range(m):
+            som = som + np.sqrt( (image[i-1,j-1]-image[i,j-1])**2 + (image[i-1,j-1]-image[i-1,j])**2)
+    return som
+
+def TV_norm1(image_hr, image_sr) -> float:
+    """Calcul the difference of total variation for greyscale image for norm 1
+    Args: image (np.ndarray)
+    Returns: the value of total variation
+    
+    """
+    n, m = image_hr.shape
+    return 1/(n*m) * np.absolute( TV(image_hr) - TV(image_sr) )/255
+
+def TV_norm2(image_hr, image_sr) -> float:
+    """Calcul the difference of total variation for greyscale image for norm 2
+    Args: image (np.ndarray)
+    Returns: the value of total variation
+    
+    """
+    n, m = image_hr.shape
+    som = 0
+    for i in range(n):
+        for j in range(m):
+            som = som + np.sqrt( np.absolute( image_hr[i-1,j-1]-image_hr[i,j-1]-image_sr[i-1,j-1]-image_sr[i,j-1])**2 + np.absolute(image_hr[i-1,j-1]-image_hr[i-1,j] -image_sr[i-1,j-1]-image_sr[i-1,j])**2)
+    return 1/(n*m) * som / 255
