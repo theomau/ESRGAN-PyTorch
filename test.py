@@ -86,6 +86,7 @@ def main() -> None:
         cv2.imwrite(sr_image_path, sr_image)
 
         # Cal IQA metrics
+        print(ssim(sr_tensor, gt_tensor).item())
         psnr_metrics += psnr(sr_tensor, gt_tensor).item()
         ssim_metrics += ssim(sr_tensor, gt_tensor).item()
 

@@ -23,9 +23,11 @@ from torch.optim.swa_utils import AveragedModel
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
+torch.cuda.empty_cache()
+
 import rrdbnet_config
 import model
-from dataset import CUDAPrefetcher, TrainValidImageDataset, TestImageDataset
+from dataset import CUDAPrefetcher, TrainValidImageDataset, TrainValidImageDatasetHrLr, TestImageDataset
 from image_quality_assessment import PSNR, SSIM
 from utils import load_state_dict, make_directory, save_checkpoint, AverageMeter, ProgressMeter
 
@@ -35,13 +37,15 @@ model_names = sorted(
 
 
 def main():
+    time_start = time.time()
+    
     # Initialize the number of training epochs
     start_epoch = 0
 
     # Initialize training to generate network evaluation indicators
     best_psnr = 0.0
     best_ssim = 0.0
-
+    
     train_prefetcher, test_prefetcher = load_dataset()
     print("Load all datasets successfully.")
 
@@ -137,14 +141,19 @@ def main():
                         "g_last.pth.tar",
                         is_best,
                         is_last)
-
+    
+    time_end = time.time()
+    print('temps total entrainement',time_end-time_start)
 
 def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
     # Load train, test and valid datasets
-    train_datasets = TrainValidImageDataset(rrdbnet_config.train_gt_images_dir,
+    
+    # Change when we have Hr and Lr image in dataset
+    train_datasets = TrainValidImageDatasetHrLr(rrdbnet_config.train_gt_images_dir,
                                             rrdbnet_config.gt_image_size,
                                             rrdbnet_config.upscale_factor,
                                             "Train")
+    
     test_datasets = TestImageDataset(rrdbnet_config.test_gt_images_dir, rrdbnet_config.test_lr_images_dir)
 
     # Generator all dataloader
@@ -194,7 +203,7 @@ def define_loss() -> nn.L1Loss:
 
 def define_optimizer(rrdbnet_model) -> optim.Adam:
     optimizer = optim.Adam(rrdbnet_model.parameters(),
-                           rrdbnet_config.model_lr,
+                           rrdbnet_config.model_lr,  # learing rate = step
                            rrdbnet_config.model_betas,
                            rrdbnet_config.model_eps,
                            rrdbnet_config.model_weight_decay)
@@ -222,6 +231,9 @@ def train(
 ) -> None:
     # Calculate how many batches of data are in each Epoch
     batches = len(train_prefetcher)
+   
+    print ( "nombres de batches = ", batches)
+    
     # Print information of progress bar during training
     batch_time = AverageMeter("Time", ":6.3f")
     data_time = AverageMeter("Data", ":6.3f")
@@ -230,6 +242,13 @@ def train(
 
     # Put the generative network model in training mode
     rrdbnet_model.train()
+    
+    # Uncoment when we want Freeze the layer
+    
+    rrdbnet_model.conv1.requires_grad_(False)
+    rrdbnet_model.trunk.requires_grad_(False)
+    rrdbnet_model.conv2.requires_grad_(False)
+    
 
     # Initialize the number of data batches to print logs on the terminal
     batch_index = 0
@@ -240,7 +259,7 @@ def train(
 
     # Get the initialization training time
     end = time.time()
-
+   
     while batch_data is not None:
         # Calculate the time it takes to load a batch of data
         data_time.update(time.time() - end)
@@ -251,7 +270,8 @@ def train(
 
         # Initialize generator gradients
         rrdbnet_model.zero_grad(set_to_none=True)
-
+        
+        
         # Mixed precision training
         with amp.autocast():
             sr = rrdbnet_model(lr)

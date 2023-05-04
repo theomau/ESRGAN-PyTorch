@@ -13,14 +13,15 @@
 # ==============================================================================
 import argparse
 import os
-
+import time
 import cv2
 import torch
 from torch import nn
-
+import torchsummary
 import imgproc
 import model
 from utils import load_state_dict
+
 
 model_names = sorted(
     name for name in model.__dict__ if
@@ -54,14 +55,36 @@ def main(args):
     # Initialize the model
     g_model = build_model(args.model_arch_name, device)
     print(f"Build `{args.model_arch_name}` model successfully.")
-
+    #print(g_model)
+    
+    
     # Load model weights
     g_model = load_state_dict(g_model, args.model_weights_path)
     print(f"Load `{args.model_arch_name}` model weights `{os.path.abspath(args.model_weights_path)}` successfully.")
-
+    
+    #torchsummary.summary(g_model,input_size=(3,128,128))
+   
+    # Uncomet when we want Freeze the layer
+    g_model.conv1.requires_grad_(False)
+    g_model.trunk.requires_grad_(False)
+    g_model.conv2.requires_grad_(False)
+    
+    print("**********************")
+    for name, param in g_model.named_parameters():
+        if param.requires_grad == True:
+            print (name)
+    print("**********************")
+    
     # Start the verification mode of the model.
     g_model.eval()
+    
+    for name, param in g_model.named_parameters():
+        if param.requires_grad == True:
+            print (name)
+    
+    
 
+    time_start = time.time()
     lr_tensor = imgproc.preprocess_one_image(args.inputs_path, device)
 
     # Use the model to generate super-resolved images
@@ -72,7 +95,8 @@ def main(args):
     sr_image = imgproc.tensor_to_image(sr_tensor, False, False)
     sr_image = cv2.cvtColor(sr_image, cv2.COLOR_RGB2BGR)
     cv2.imwrite(args.output_path, sr_image)
-
+    time_end = time.time()
+    print('time for generate SR : ',time_end-time_start)
     print(f"SR image save to `{args.output_path}`")
 
 
@@ -80,22 +104,22 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Using the model generator super-resolution images.")
     parser.add_argument("--model_arch_name",
                         type=str,
-                        default="rrdbnet_x4")
+                        default="rrdbnet_x2")
     parser.add_argument("--inputs_path",
                         type=str,
-                        default="./figure/baboon_lr.png",
+                        default="./figure/Diamond_LR1.png",
                         help="Low-resolution image path.")
     parser.add_argument("--output_path",
                         type=str,
-                        default="./figure/baboon_sr.png",
+                        default="./figure/Diamond_SR1bb.png",
                         help="Super-resolution image path.")
     parser.add_argument("--model_weights_path",
                         type=str,
-                        default="./results/pretrained_models/ESRGAN_x4-DFO2K-25393df7.pth.tar",
+                        default="./results/pretrained_models/g_epoch_30.pth.tar",
                         help="Model weights file path.")
     parser.add_argument("--device_type",
                         type=str,
-                        default="cpu",
+                        default="cuda",
                         choices=["cpu", "cuda"])
     args = parser.parse_args()
 

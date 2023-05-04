@@ -34,7 +34,7 @@ def choice_device(device_type: str) -> torch.device:
 def build_model(model_arch_name: str, device: torch.device) -> nn.Module:
     # Initialize the super-resolution model
     g_model = model.__dict__[model_arch_name](in_channels=3,
-                                              out_channels=3,
+                                              out_channels=1,
                                               channels=64,
                                               growth_channels=32,
                                               num_blocks=23)
@@ -97,7 +97,7 @@ if __name__ == "__main__":
                         help="Path to folder in which to save super-resolution images.")
     parser.add_argument("--model_weights_path",
                         type=str,
-                        default="./results/train_ESRGAN_x2_Diamond/g_last.pth.tar",
+                        default="./results/train_ESRGAN_x2_Diamond_freeze_greyscale/g_last.pth.tar",
                         help="Model weights file path.")
     parser.add_argument("--device_type",
                         type=str,

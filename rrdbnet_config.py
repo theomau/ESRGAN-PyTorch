@@ -17,6 +17,7 @@ import numpy as np
 import torch
 from torch.backends import cudnn
 
+
 # Random seed to maintain reproducible results
 random.seed(0)
 torch.manual_seed(0)
@@ -28,38 +29,39 @@ cudnn.benchmark = True
 # When evaluating the performance of the SR model, whether to verify only the Y channel image data
 only_test_y_channel = True
 # Model architecture name
-g_arch_name = "rrdbnet_x4"
+g_arch_name = "rrdbnet_x2"
 # Model arch config
 in_channels = 3
-out_channels = 3
+out_channels = 1
 channels = 64
 growth_channels = 32
 num_blocks = 23
-upscale_factor = 4
+upscale_factor = 2
 # Current configuration parameter method
 mode = "train"
 # Experiment name, easy to save weights and log files
-exp_name = "RRDBNet_x4"
+exp_name = "train_RRDBNet_x2_Diamond_freeze_greyscale"
 
 if mode == "train":
     # Dataset address
-    train_gt_images_dir = f"./data/DIV2K/ESRGAN/train"
+    train_gt_images_dir = f"./data/Diamond_q2_no_contrast/Train_Diamond2_HR"
 
-    test_gt_images_dir = f"./data/Set5/GTmod12"
-    test_lr_images_dir = f"./data/Set5/LRbicx{upscale_factor}"
+    test_gt_images_dir =  f"./data/Diamond_q2_no_contrast/Test_Diamond2_HR"
+    
+    test_lr_images_dir =  f"./data/Diamond_q2_no_contrast/Test_Diamond2_LR"
 
-    gt_image_size = 192
-    batch_size = 16
-    num_workers = 4
+    gt_image_size = 128
+    batch_size = 6  # nombres d'image par lots
+    num_workers = 4 # le nombres de sous-procésseurs utilisé pour charger les données dans la fonction DataLoader
 
     # The address to load the pretrained model
-    pretrained_g_model_weights_path = ""
+    pretrained_g_model_weights_path = f"./results/pretrained_models/g_last_ESRGAN_x4.pth.tar"
 
     # Incremental training and migration training
     resume_g_model_weights_path = f""
 
-    # Total num epochs (1,000,000 iters)
-    epochs = 234
+    # Total num epochs 
+    epochs = 90
 
     # loss function weights
     loss_weights = 1.0
@@ -83,8 +85,7 @@ if mode == "train":
 
 if mode == "test":
     # Test data address
-    lr_dir = f"./data/Set5/LRbicx{upscale_factor}"
+    lr_dir = f"./data/Diamond_q2_no_contrast/Test_Diamond2_LR"
     sr_dir = f"./results/test/{exp_name}"
-    gt_dir = "./data/Set5/GTmod12"
-
-    g_model_weights_path = "./results/pretrained_models/RRDBNet_x4-DFO2K-2e2a91f4.pth.tar"
+    gt_dir = f"./data/Diamond_q2_no_contrast/Test_Diamond2_HR"
+    #g_model_weights_path = "./results/pretrained_models/RRDBNet_x4-DFO2K-2e2a91f4.pth.tar"

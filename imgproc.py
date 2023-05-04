@@ -595,6 +595,7 @@ def random_horizontally_flip(image: np.ndarray, p: float = 0.5) -> np.ndarray:
 
     return horizontally_flip_image
 
+
 def random_horizontally_flip_v2(image_hr: np.ndarray, image_lr: np.ndarray, p: float = 0.5) -> [np.ndarray, np.ndarray]:
     """Same flip two image upside down randomly
 

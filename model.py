@@ -42,21 +42,28 @@ class _ResidualDenseBlock(nn.Module):
         self.conv3 = nn.Conv2d(channels + growth_channels * 2, growth_channels, (3, 3), (1, 1), (1, 1))
         self.conv4 = nn.Conv2d(channels + growth_channels * 3, growth_channels, (3, 3), (1, 1), (1, 1))
         self.conv5 = nn.Conv2d(channels + growth_channels * 4, channels, (3, 3), (1, 1), (1, 1))
-
-        self.leaky_relu = nn.LeakyReLU(0.2, True)
+        
+        self.leaky_relu = nn.LeakyReLU(0.2)
         self.identity = nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+
         identity = x
 
         out1 = self.leaky_relu(self.conv1(x))
-        out2 = self.leaky_relu(self.conv2(torch.cat([x, out1], 1)))
-        out3 = self.leaky_relu(self.conv3(torch.cat([x, out1, out2], 1)))
-        out4 = self.leaky_relu(self.conv4(torch.cat([x, out1, out2, out3], 1)))
-        out5 = self.identity(self.conv5(torch.cat([x, out1, out2, out3, out4], 1)))
-        out = torch.mul(out5, 0.2)
-        out = torch.add(out, identity)
 
+        out2 = self.leaky_relu(self.conv2(torch.cat([x, out1], 1)))
+ 
+        out3 = self.leaky_relu(self.conv3(torch.cat([x, out1, out2], 1)))
+        
+        out4 = self.leaky_relu(self.conv4(torch.cat([x, out1, out2, out3], 1)))
+    
+        out5 = self.identity(self.conv5(torch.cat([x, out1, out2, out3, out4], 1)))
+       
+        out = torch.mul(out5, 0.2)
+        
+        out = torch.add(out, identity)
+        
         return out
 
 
@@ -76,13 +83,13 @@ class _ResidualResidualDenseBlock(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         identity = x
-
+        
         out = self.rdb1(x)
         out = self.rdb2(out)
         out = self.rdb3(out)
         out = torch.mul(out, 0.2)
         out = torch.add(out, identity)
-
+        
         return out
 
 
@@ -128,7 +135,7 @@ class Discriminator(nn.Module):
         )
 
         self.classifier = nn.Sequential(
-            nn.Linear(512 * 4 * 4, 100),
+            nn.Linear(512 * 4 * 4, 100), 
             nn.LeakyReLU(0.2, True),
             nn.Linear(100, 1)
         )
@@ -141,10 +148,67 @@ class Discriminator(nn.Module):
         return out
 
 
+
+class ContrastGenerator(nn.Module):
+    def __init__(
+            self,
+            in_channels: int = 1,  # tensor --> canneaux, longeur, largeur
+            out_channels: int = 1,
+            channels: int = 32,
+            growth_channels: int = 32,
+            num_blocks: int = 23,
+    ) -> None:
+        super(ContrastGenerator, self).__init__()
+        
+        # The first layer of convolutional layer.
+        self.conv1 = nn.Conv2d(in_channels, channels, (3, 3), (1, 1), (1, 1))
+        
+        # Feature extraction backbone network.
+        trunk = []
+        for _ in range(num_blocks):
+            trunk.append(_ResidualResidualDenseBlock(channels, growth_channels))
+        self.trunk = nn.Sequential(*trunk)
+        
+        # After the feature extraction network, reconnect a layer of convolutional blocks.
+        self.conv2 = nn.Conv2d(channels, channels, (3, 3), (1, 1), (1, 1))
+
+        # Output layer.
+        self.conv3 = nn.Conv2d(channels, out_channels, (1, 1), (1, 1), (1, 1))
+
+        # Initialize all layer
+        self._initialize_weights()
+    
+    # The model should be defined in the Torch.script method.
+    def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
+        out1 = self.conv1(x)
+    
+        out = self.trunk(out1)
+
+        out2 = self.conv2(out)
+
+        out = torch.add(out1, out2)
+
+        out = self.conv3(out)
+     
+        return out
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self._forward_impl(x)
+
+    def _initialize_weights(self) -> None:
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d):
+                nn.init.kaiming_normal_(module.weight)
+                module.weight.data *= 0.1
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+
+
+    
 class RRDBNet(nn.Module):
     def __init__(
             self,
-            in_channels: int = 3,
+            in_channels: int = 3,  # tensor --> canneaux, longeur, largeur
             out_channels: int = 3,
             channels: int = 64,
             growth_channels: int = 32,
@@ -210,25 +274,36 @@ class RRDBNet(nn.Module):
     # The model should be defined in the Torch.script method.
     def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
         out1 = self.conv1(x)
+    
         out = self.trunk(out1)
+
         out2 = self.conv2(out)
+
         out = torch.add(out1, out2)
 
         if self.upscale_factor == 2:
             out = self.upsampling1(F.interpolate(out, scale_factor=2, mode="nearest"))
+        
         if self.upscale_factor == 4:
             out = self.upsampling1(F.interpolate(out, scale_factor=2, mode="nearest"))
+          
             out = self.upsampling2(F.interpolate(out, scale_factor=2, mode="nearest"))
+          
         if self.upscale_factor == 8:
             out = self.upsampling1(F.interpolate(out, scale_factor=2, mode="nearest"))
             out = self.upsampling2(F.interpolate(out, scale_factor=2, mode="nearest"))
             out = self.upsampling3(F.interpolate(out, scale_factor=2, mode="nearest"))
 
+
         out = self.conv3(out)
+
         out = self.conv4(out)
 
         out = torch.clamp_(out, 0.0, 1.0)
-
+        
+        if out.shape[1] == 1:
+            out = torch.cat((out, out, out), 1)
+     
         return out
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

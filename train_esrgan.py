@@ -25,7 +25,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 import esrgan_config
 import model
-from dataset import CUDAPrefetcher, TrainValidImageDataset, TestImageDataset
+from dataset import CUDAPrefetcher, TrainValidImageDataset, TrainValidImageDatasetHrLr, TestImageDataset
 from image_quality_assessment import PSNR, SSIM
 from utils import load_state_dict, make_directory, save_checkpoint, AverageMeter, ProgressMeter
 
@@ -174,11 +174,15 @@ def main():
                         "g_last.pth.tar",
                         is_best,
                         is_last)
+        
 
 
 def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
     # Load train, test and valid datasets
-    train_datasets = TrainValidImageDataset(esrgan_config.train_gt_images_dir,
+    
+    #switch trainvalidimagedataset for exp
+    
+    train_datasets = TrainValidImageDatasetHrLr(esrgan_config.train_gt_images_dir,
                                             esrgan_config.gt_image_size,
                                             esrgan_config.upscale_factor,
                                             "Train")
@@ -300,7 +304,15 @@ def train(
     # Put the generative network model in training mode
     d_model.train()
     g_model.train()
-
+    
+    # Uncomet when we want Freeze the layer
+    d_model.features.requires_grad_(False)
+    
+    g_model.conv1.requires_grad_(False)
+    g_model.trunk.requires_grad_(False)
+    g_model.conv2.requires_grad_(False)
+    
+   
     # Initialize the number of data batches to print logs on the terminal
     batch_index = 0
 
@@ -331,7 +343,8 @@ def train(
 
         # Initialize generator model gradients
         g_model.zero_grad(set_to_none=True)
-
+        
+        
         # Calculate the perceptual loss of the generator, mainly including pixel loss, feature loss and adversarial loss
         with amp.autocast():
             # Use the generator model to generate fake samples
@@ -362,10 +375,14 @@ def train(
         # During discriminator model training, enable discriminator model backpropagation
         for d_parameters in d_model.parameters():
             d_parameters.requires_grad = True
-
+        
+        #freeze layer of discriminator
+        d_model.features.requires_grad_(False)
+        
         # Initialize the discriminator model gradients
         d_model.zero_grad(set_to_none=True)
-
+        
+       
         # Calculate the classification score of the discriminator model for real samples
         with amp.autocast():
             gt_output = d_model(gt)
