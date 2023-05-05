@@ -20,9 +20,13 @@ from torchvision import models
 from torchvision import transforms
 from torchvision.models.feature_extraction import create_feature_extractor
 
+from groupy.gconv.pytorch_gconv import P4ConvZ2, P4ConvP4, P4MConvZ2, P4MConvP4M
+
 __all__ = [
     "Discriminator", "RRDBNet", "ContentLoss",
-    "discriminator", "rrdbnet_x1", "rrdbnet_x2", "rrdbnet_x4", "rrdbnet_x8", "content_loss",
+    "discriminator", "g_p4_discriminator", "g_p4m_discriminator",
+    "rrdbnet_x1", "rrdbnet_x2", "g_p4_rrdbnet_x2","g_p4m_rrdbnet_x2", "rrdbnet_x4", "rrdbnet_x8", 
+    "content_loss",
 ]
 
 
@@ -66,6 +70,91 @@ class _ResidualDenseBlock(nn.Module):
         
         return out
 
+class _G_P4_ResidualDenseBlock(nn.Module):
+    """Achieves densely connected convolutional layers.
+    `Densely Connected Convolutional Networks <https://arxiv.org/pdf/1608.06993v5.pdf>` paper.
+
+    Args:
+        channels (int): The number of channels in the input image.
+        growth_channels (int): The number of channels that increase in each layer of convolution.
+    """
+
+    def __init__(self, channels: int, growth_channels: int) -> None:
+        super(_G_P4_ResidualDenseBlock, self).__init__()
+        self.g_conv1 = P4ConvP4(channels + growth_channels * 0, growth_channels, kernel_size=3, stride=1, padding=1)
+        self.g_conv2 = P4ConvP4(channels + growth_channels * 1, growth_channels, kernel_size=3, stride=1, padding=1)
+        self.g_conv3 = P4ConvP4(channels + growth_channels * 2, growth_channels, kernel_size=3, stride=1, padding=1)
+        self.g_conv4 = P4ConvP4(channels + growth_channels * 3, growth_channels, kernel_size=3, stride=1, padding=1)
+        self.g_conv5 = P4ConvP4(channels + growth_channels * 4, channels, kernel_size=3, stride=1, padding=1)
+        
+        self.leaky_relu = nn.LeakyReLU(0.2)
+        self.identity = nn.Identity()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+
+        identity = x
+
+        out1 = self.leaky_relu(self.g_conv1(x))
+
+        out2 = self.leaky_relu(self.g_conv2(torch.cat([x, out1], 1)))
+ 
+        out3 = self.leaky_relu(self.g_conv3(torch.cat([x, out1, out2], 1)))
+        
+        out4 = self.leaky_relu(self.g_conv4(torch.cat([x, out1, out2, out3], 1)))
+    
+        out5 = self.identity(self.g_conv5(torch.cat([x, out1, out2, out3, out4], 1)))
+       
+        out = torch.mul(out5, 0.2)
+        
+        out = torch.add(out, identity)
+        
+        return out
+
+
+
+
+class _G_P4M_ResidualDenseBlock(nn.Module):
+    """Achieves densely connected convolutional layers.
+    `Densely Connected Convolutional Networks <https://arxiv.org/pdf/1608.06993v5.pdf>` paper.
+
+    Args:
+        channels (int): The number of channels in the input image.
+        growth_channels (int): The number of channels that increase in each layer of convolution.
+    """
+
+    def __init__(self, channels: int, growth_channels: int) -> None:
+        super(_G_P4M_ResidualDenseBlock, self).__init__()
+        self.g_conv1 = P4MConvP4M(channels + growth_channels * 0, growth_channels, kernel_size=3, stride=1, padding=1)
+        self.g_conv2 = P4MConvP4M(channels + growth_channels * 1, growth_channels, kernel_size=3, stride=1, padding=1)
+        self.g_conv3 = P4MConvP4M(channels + growth_channels * 2, growth_channels, kernel_size=3, stride=1, padding=1)
+        self.g_conv4 = P4MConvP4M(channels + growth_channels * 3, growth_channels, kernel_size=3, stride=1, padding=1)
+        self.g_conv5 = P4MConvP4M(channels + growth_channels * 4, channels, kernel_size=3, stride=1, padding=1)
+        
+        self.leaky_relu = nn.LeakyReLU(0.2)
+        self.identity = nn.Identity()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+
+        identity = x
+
+        out1 = self.leaky_relu(self.g_conv1(x))
+
+        out2 = self.leaky_relu(self.g_conv2(torch.cat([x, out1], 1)))
+ 
+        out3 = self.leaky_relu(self.g_conv3(torch.cat([x, out1, out2], 1)))
+        
+        out4 = self.leaky_relu(self.g_conv4(torch.cat([x, out1, out2, out3], 1)))
+    
+        out5 = self.identity(self.g_conv5(torch.cat([x, out1, out2, out3, out4], 1)))
+       
+        out = torch.mul(out5, 0.2)
+        
+        out = torch.add(out, identity)
+        
+        return out
+  
+
+
 
 class _ResidualResidualDenseBlock(nn.Module):
     """Multi-layer residual dense convolution block.
@@ -93,6 +182,59 @@ class _ResidualResidualDenseBlock(nn.Module):
         return out
 
 
+
+class _G_P4_ResidualResidualDenseBlock(nn.Module):
+    """Multi-layer residual dense convolution block.
+
+    Args:
+        channels (int): The number of channels in the input image.
+        growth_channels (int): The number of channels that increase in each layer of convolution.
+    """
+
+    def __init__(self, channels: int, growth_channels: int) -> None:
+        super(_G_P4_ResidualResidualDenseBlock, self).__init__()
+        self.rdb1 = _G_P4_ResidualDenseBlock(channels, growth_channels)
+        self.rdb2 = _G_P4_ResidualDenseBlock(channels, growth_channels)
+        self.rdb3 = _G_P4_ResidualDenseBlock(channels, growth_channels)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        identity = x
+        
+        out = self.rdb1(x)
+        out = self.rdb2(out)
+        out = self.rdb3(out)
+        out = torch.mul(out, 0.2)
+        out = torch.add(out, identity)
+        
+        return out
+
+
+class _G_P4M_ResidualResidualDenseBlock(nn.Module):
+    """Multi-layer residual dense convolution block.
+
+    Args:
+        channels (int): The number of channels in the input image.
+        growth_channels (int): The number of channels that increase in each layer of convolution.
+    """
+
+    def __init__(self, channels: int, growth_channels: int) -> None:
+        super(_G_P4M_ResidualResidualDenseBlock, self).__init__()
+        self.rdb1 = _G_P4M_ResidualDenseBlock(channels, growth_channels)
+        self.rdb2 = _G_P4M_ResidualDenseBlock(channels, growth_channels)
+        self.rdb3 = _G_P4M_ResidualDenseBlock(channels, growth_channels)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        identity = x
+        
+        out = self.rdb1(x)
+        out = self.rdb2(out)
+        out = self.rdb3(out)
+        out = torch.mul(out, 0.2)
+        out = torch.add(out, identity)
+        
+        return out
+    
+    
 class Discriminator(nn.Module):
     def __init__(self) -> None:
         super(Discriminator, self).__init__()
@@ -147,62 +289,116 @@ class Discriminator(nn.Module):
 
         return out
 
+class G_P4_Discriminator(nn.Module):
+    def __init__(self) -> None:
+        super(G_P4_Discriminator, self).__init__()
+        self.features = nn.Sequential(
+            # input size. (3) x 128 x 128
+            P4ConvP4(3, 64, kernel_size=3, stride=1, padding=1),
+            nn.LeakyReLU(0.2, True),
+            # state size. (64) x 64 x 64
+            P4ConvP4(64, 64, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            nn.LeakyReLU(0.2, True),
+            P4ConvP4(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, True),
+            # state size. (128) x 32 x 32
+            P4ConvP4(128, 128, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, True),
+            P4ConvP4(128, 256, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2, True),
+            # state size. (256) x 16 x 16
+            P4ConvP4(256, 256, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2, True),
+            P4ConvP4(256, 512, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, True),
+            # state size. (512) x 8 x 8
+            P4ConvP4(512, 512, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, True),
+            P4ConvP4(512, 512, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, True),
+            # state size. (512) x 4 x 4
+            P4ConvP4(512, 512, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, True)
+        )
 
-
-class ContrastGenerator(nn.Module):
-    def __init__(
-            self,
-            in_channels: int = 1,  # tensor --> canneaux, longeur, largeur
-            out_channels: int = 1,
-            channels: int = 32,
-            growth_channels: int = 32,
-            num_blocks: int = 23,
-    ) -> None:
-        super(ContrastGenerator, self).__init__()
-        
-        # The first layer of convolutional layer.
-        self.conv1 = nn.Conv2d(in_channels, channels, (3, 3), (1, 1), (1, 1))
-        
-        # Feature extraction backbone network.
-        trunk = []
-        for _ in range(num_blocks):
-            trunk.append(_ResidualResidualDenseBlock(channels, growth_channels))
-        self.trunk = nn.Sequential(*trunk)
-        
-        # After the feature extraction network, reconnect a layer of convolutional blocks.
-        self.conv2 = nn.Conv2d(channels, channels, (3, 3), (1, 1), (1, 1))
-
-        # Output layer.
-        self.conv3 = nn.Conv2d(channels, out_channels, (1, 1), (1, 1), (1, 1))
-
-        # Initialize all layer
-        self._initialize_weights()
-    
-    # The model should be defined in the Torch.script method.
-    def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
-        out1 = self.conv1(x)
-    
-        out = self.trunk(out1)
-
-        out2 = self.conv2(out)
-
-        out = torch.add(out1, out2)
-
-        out = self.conv3(out)
-     
-        return out
+        self.classifier = nn.Sequential(
+            nn.Linear(512 * 4 * 4, 100), 
+            nn.LeakyReLU(0.2, True),
+            nn.Linear(100, 1)
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self._forward_impl(x)
+        out = self.features(x)
+        out = torch.flatten(out, 1)
+        out = self.classifier(out)
 
-    def _initialize_weights(self) -> None:
-        for module in self.modules():
-            if isinstance(module, nn.Conv2d):
-                nn.init.kaiming_normal_(module.weight)
-                module.weight.data *= 0.1
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
+        return out   
 
+
+    
+class G_P4M_Discriminator(nn.Module):
+    def __init__(self) -> None:
+        super(G_P4M_Discriminator, self).__init__()
+        self.features = nn.Sequential(
+            # input size. (3) x 128 x 128
+            P4MConvP4M(3, 64, kernel_size=3, stride=1, padding=1),
+            nn.LeakyReLU(0.2, True),
+            # state size. (64) x 64 x 64
+            P4MConvP4M(64, 64, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            nn.LeakyReLU(0.2, True),
+            P4MConvP4M(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, True),
+            # state size. (128) x 32 x 32
+            P4MConvP4M(128, 128, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, True),
+            P4MConvP4M(128, 256, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2, True),
+            # state size. (256) x 16 x 16
+            P4MConvP4M(256, 256, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2, True),
+            P4MConvP4M(256, 512, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, True),
+            # state size. (512) x 8 x 8
+            P4MConvP4M(512, 512, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, True),
+            P4MConvP4M(512, 512, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, True),
+            # state size. (512) x 4 x 4
+            P4MConvP4M(512, 512, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, True)
+        )
+
+        self.classifier = nn.Sequential(
+            nn.Linear(512 * 4 * 4, 100), 
+            nn.LeakyReLU(0.2, True),
+            nn.Linear(100, 1)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out = self.features(x)
+        out = torch.flatten(out, 1)
+        out = self.classifier(out)
+
+        return out   
+  
 
     
 class RRDBNet(nn.Module):
@@ -318,6 +514,233 @@ class RRDBNet(nn.Module):
                     nn.init.constant_(module.bias, 0)
 
 
+
+class G_P4_RRDBNet(nn.Module):
+    def __init__(
+            self,
+            in_channels: int = 3,  # tensor --> canneaux, longeur, largeur
+            out_channels: int = 3,
+            channels: int = 64,
+            growth_channels: int = 32,
+            num_blocks: int = 23,
+            upscale_factor: int = 4,
+    ) -> None:
+        super(G_P4_RRDBNet, self).__init__()
+        self.upscale_factor = upscale_factor
+
+        # The first layer of convolutional layer.
+        self.g_conv1 = P4ConvZ2(in_channels, channels, kernel_size=3, stride=1, padding=1)
+
+        # Feature extraction backbone network.
+        trunk = []
+        for _ in range(num_blocks):
+            trunk.append(_G_P4_ResidualResidualDenseBlock(channels, growth_channels))
+        self.trunk = nn.Sequential(*trunk)
+
+        # After the feature extraction network, reconnect a layer of convolutional blocks.
+        self.g_conv2 = P4ConvP4(channels, channels, kernel_size=3, stride=1, padding=1)
+
+        # Upsampling convolutional layer.
+        if upscale_factor == 2:
+            self.upsampling1 = nn.Sequential(
+                P4ConvP4(channels, channels, kernel_size=3, stride=1, padding=1),
+                nn.LeakyReLU(0.2, True)
+            )
+        if upscale_factor == 4:
+            self.upsampling1 = nn.Sequential(
+                P4ConvP4(channels, channels, kernel_size=3, stride=1, padding=1),
+                nn.LeakyReLU(0.2, True)
+            )
+            self.upsampling2 = nn.Sequential(
+                P4ConvP4(channels, channels, kernel_size=3, stride=1, padding=1),
+                nn.LeakyReLU(0.2, True)
+            )
+        if upscale_factor == 8:
+            self.upsampling1 = nn.Sequential(
+                P4ConvP4(channels, channels, kernel_size=3, stride=1, padding=1),
+                nn.LeakyReLU(0.2, True)
+            )
+            self.upsampling2 = nn.Sequential(
+                P4ConvP4(channels, channels, kernel_size=3, stride=1, padding=1),
+                nn.LeakyReLU(0.2, True)
+            )
+            self.upsampling3 = nn.Sequential(
+                P4ConvP4(channels, channels, kernel_size=3, stride=1, padding=1),
+                nn.LeakyReLU(0.2, True)
+            )
+
+        # Reconnect a layer of convolution block after upsampling.
+        self.g_conv3 = nn.Sequential(
+            P4ConvP4(channels, channels, kernel_size=3, stride=1, padding=1),
+            nn.LeakyReLU(0.2, True)
+        )
+
+        # Output layer.
+        self.g_conv4 = P4ConvP4(channels, out_channels, kernel_size=3, stride=1, padding=1)
+
+        # Initialize all layer
+        self._initialize_weights()
+
+    # The model should be defined in the Torch.script method.
+    def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
+        out1 = self.g_conv1(x)
+    
+        out = self.trunk(out1)
+
+        out2 = self.g_conv2(out)
+
+        out = torch.add(out1, out2)
+
+        if self.upscale_factor == 2:
+            out = self.upsampling1(F.interpolate(out, scale_factor=2, mode="nearest"))
+        
+        if self.upscale_factor == 4:
+            out = self.upsampling1(F.interpolate(out, scale_factor=2, mode="nearest"))
+          
+            out = self.upsampling2(F.interpolate(out, scale_factor=2, mode="nearest"))
+          
+        if self.upscale_factor == 8:
+            out = self.upsampling1(F.interpolate(out, scale_factor=2, mode="nearest"))
+            out = self.upsampling2(F.interpolate(out, scale_factor=2, mode="nearest"))
+            out = self.upsampling3(F.interpolate(out, scale_factor=2, mode="nearest"))
+
+
+        out = self.g_conv3(out)
+
+        out = self.g_conv4(out)
+
+        out = torch.clamp_(out, 0.0, 1.0)
+        
+        if out.shape[1] == 1:
+            out = torch.cat((out, out, out), 1)
+     
+        return out
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self._forward_impl(x)
+
+    def _initialize_weights(self) -> None:
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d):
+                nn.init.kaiming_normal_(module.weight)
+                module.weight.data *= 0.1
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+
+
+class G_P4M_RRDBNet(nn.Module):
+    def __init__(
+            self,
+            in_channels: int = 3,  # tensor --> canneaux, longeur, largeur
+            out_channels: int = 3,
+            channels: int = 64,
+            growth_channels: int = 32,
+            num_blocks: int = 23,
+            upscale_factor: int = 4,
+    ) -> None:
+        super(G_P4M_RRDBNet, self).__init__()
+        self.upscale_factor = upscale_factor
+
+        # The first layer of convolutional layer.
+        self.g_conv1 = P4MConvZ2(in_channels, channels, kernel_size=3, stride=1, padding=1)
+
+        # Feature extraction backbone network.
+        trunk = []
+        for _ in range(num_blocks):
+            trunk.append(_G_P4M_ResidualResidualDenseBlock(channels, growth_channels))
+        self.trunk = nn.Sequential(*trunk)
+
+        # After the feature extraction network, reconnect a layer of convolutional blocks.
+        self.g_conv2 = P4MConvP4M(channels, channels, kernel_size=3, stride=1, padding=1)
+
+        # Upsampling convolutional layer.
+        if upscale_factor == 2:
+            self.upsampling1 = nn.Sequential(
+                P4MConvP4M(channels, channels, kernel_size=3, stride=1, padding=1),
+                nn.LeakyReLU(0.2, True)
+            )
+        if upscale_factor == 4:
+            self.upsampling1 = nn.Sequential(
+                P4MConvP4M(channels, channels, kernel_size=3, stride=1, padding=1),
+                nn.LeakyReLU(0.2, True)
+            )
+            self.upsampling2 = nn.Sequential(
+                P4MConvP4M(channels, channels, kernel_size=3, stride=1, padding=1),
+                nn.LeakyReLU(0.2, True)
+            )
+        if upscale_factor == 8:
+            self.upsampling1 = nn.Sequential(
+                P4MConvP4M(channels, channels, kernel_size=3, stride=1, padding=1),
+                nn.LeakyReLU(0.2, True)
+            )
+            self.upsampling2 = nn.Sequential(
+                P4MConvP4M(channels, channels, kernel_size=3, stride=1, padding=1),
+                nn.LeakyReLU(0.2, True)
+            )
+            self.upsampling3 = nn.Sequential(
+                P4MConvP4M(channels, channels, kernel_size=3, stride=1, padding=1),
+                nn.LeakyReLU(0.2, True)
+            )
+
+        # Reconnect a layer of convolution block after upsampling.
+        self.g_conv3 = nn.Sequential(
+            P4MConvP4M(channels, channels, kernel_size=3, stride=1, padding=1),
+            nn.LeakyReLU(0.2, True)
+        )
+
+        # Output layer.
+        self.g_conv4 = P4MConvP4M(channels, out_channels, kernel_size=3, stride=1, padding=1)
+
+        # Initialize all layer
+        self._initialize_weights()
+
+    # The model should be defined in the Torch.script method.
+    def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
+        out1 = self.g_conv1(x)
+    
+        out = self.trunk(out1)
+
+        out2 = self.g_conv2(out)
+
+        out = torch.add(out1, out2)
+
+        if self.upscale_factor == 2:
+            out = self.upsampling1(F.interpolate(out, scale_factor=2, mode="nearest"))
+        
+        if self.upscale_factor == 4:
+            out = self.upsampling1(F.interpolate(out, scale_factor=2, mode="nearest"))
+          
+            out = self.upsampling2(F.interpolate(out, scale_factor=2, mode="nearest"))
+          
+        if self.upscale_factor == 8:
+            out = self.upsampling1(F.interpolate(out, scale_factor=2, mode="nearest"))
+            out = self.upsampling2(F.interpolate(out, scale_factor=2, mode="nearest"))
+            out = self.upsampling3(F.interpolate(out, scale_factor=2, mode="nearest"))
+
+
+        out = self.g_conv3(out)
+
+        out = self.g_conv4(out)
+
+        out = torch.clamp_(out, 0.0, 1.0)
+        
+        if out.shape[1] == 1:
+            out = torch.cat((out, out, out), 1)
+     
+        return out
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self._forward_impl(x)
+
+    def _initialize_weights(self) -> None:
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d):
+                nn.init.kaiming_normal_(module.weight)
+                module.weight.data *= 0.1
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+
+
 class ContentLoss(nn.Module):
     """Constructs a content loss function based on the VGG19 network.
     Using high-level feature mapping layers from the latter layers will focus more on the texture content of the image.
@@ -372,6 +795,15 @@ def discriminator() -> Discriminator:
 
     return model
 
+def g_p4_discriminator() -> Discriminator:
+    model = G_P4_Discriminator()
+
+    return model
+
+def g_p4m_discriminator() -> Discriminator:
+    model = G_P4M_Discriminator()
+
+    return model
 
 def rrdbnet_x1(**kwargs: Any) -> RRDBNet:
     model = RRDBNet(upscale_factor=1, **kwargs)
@@ -384,6 +816,15 @@ def rrdbnet_x2(**kwargs: Any) -> RRDBNet:
 
     return model
 
+def g_p4_rrdbnet_x2(**kwargs: Any) -> RRDBNet:
+    model = G_P4_RRDBNet(upscale_factor=2, **kwargs)
+
+    return model
+
+def g_p4m_rrdbnet_x2(**kwargs: Any) -> RRDBNet:
+    model = G_P4M_RRDBNet(upscale_factor=2, **kwargs)
+
+    return model
 
 def rrdbnet_x4(**kwargs: Any) -> RRDBNet:
     model = RRDBNet(upscale_factor=4, **kwargs)
